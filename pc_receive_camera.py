@@ -6,6 +6,9 @@ import cv2
 HOST = "0.0.0.0"
 PORT = 9999
 
+RASPI_IP = "192.168.0.173"
+CONTROL_PORT = 10000
+
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((HOST, PORT))
 server_socket.listen(1)
@@ -13,6 +16,9 @@ server_socket.listen(1)
 print("接続待機中...")
 conn, addr = server_socket.accept()
 print("接続:", addr)
+
+control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+control_socket.connect((RASPI_IP, CONTROL_PORT))
 
 data = b""
 payload_size = struct.calcsize("Q")
@@ -51,11 +57,16 @@ try:
 
         cv2.imshow("Raspberry Pi Camera", frame)
 
-        # qキーで終了
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('q'):
             break
+
+        elif key == ord(' '):
+            control_socket.sendall(b"TOGGLE_IR")
 
 finally:
     conn.close()
     server_socket.close()
+    control_socket.close()
     cv2.destroyAllWindows()

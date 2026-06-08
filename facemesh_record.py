@@ -63,8 +63,13 @@ csv_writer = csv.writer(csv_file)
 
 if not csv_exists:
     csv_writer.writerow([
+        "session_id",
         "session_start_datetime",
+        "recording_id",
+        "recording_start_datetime",
+        "recording_elapsed_sec",
         "record_datetime",
+
         "frame_index",
         "timestamp_ms",
         "landmark_id",
@@ -88,7 +93,10 @@ if not csv_exists:
     ])
 
 
-session_start_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+# 実行ごとのID
+session_start_dt = datetime.now()
+session_id = session_start_dt.strftime("%Y%m%d_%H%M%S")
+session_start_datetime = session_start_dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 # =========================
@@ -133,12 +141,18 @@ show_facemesh = False
 recording = False
 frame_index = 0
 
+# rキーで記録を開始するたびに増やす
+recording_id = 0
+recording_start_time = None
+recording_start_datetime = ""
+
 
 print("操作方法:")
 print("  f : FaceMesh表示 ON/OFF")
 print("  r : CSV記録 開始/停止")
 print("  q : 終了")
 print("CSV保存先:", CSV_PATH)
+print("session_id:", session_id)
 
 
 try:
@@ -228,6 +242,11 @@ try:
                     if recording:
                         record_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
+                        if recording_start_time is not None:
+                            recording_elapsed_sec = time.perf_counter() - recording_start_time
+                        else:
+                            recording_elapsed_sec = 0.0
+
                         for landmark_id in TARGET_LANDMARKS:
                             lm = face_landmarks[landmark_id]
 
@@ -244,8 +263,13 @@ try:
                             z_norm_by_eye = z_nose_origin / eye_distance_px
 
                             csv_writer.writerow([
+                                session_id,
                                 session_start_datetime,
+                                recording_id,
+                                recording_start_datetime,
+                                recording_elapsed_sec,
                                 record_datetime,
+
                                 frame_index,
                                 timestamp_ms,
                                 landmark_id,
@@ -310,7 +334,7 @@ try:
             status_text.append("FaceMesh: OFF")
 
         if recording:
-            status_text.append("REC: ON")
+            status_text.append(f"REC: ON id={recording_id}")
         else:
             status_text.append("REC: OFF")
 
@@ -336,8 +360,32 @@ try:
             print("FaceMesh表示 ON" if show_facemesh else "FaceMesh表示 OFF")
 
         elif key == ord("r"):
-            recording = not recording
-            print("CSV記録 開始" if recording else "CSV記録 停止")
+            if not recording:
+                # 記録開始
+                recording = True
+                recording_id += 1
+                recording_start_time = time.perf_counter()
+                recording_start_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+                print("CSV記録 開始")
+                print("  recording_id:", recording_id)
+                print("  recording_start_datetime:", recording_start_datetime)
+
+            else:
+                # 記録停止
+                recording = False
+
+                if recording_start_time is not None:
+                    elapsed = time.perf_counter() - recording_start_time
+                else:
+                    elapsed = 0.0
+
+                print("CSV記録 停止")
+                print("  recording_id:", recording_id)
+                print("  elapsed_sec:", elapsed)
+
+                recording_start_time = None
+                recording_start_datetime = ""
 
 
 except KeyboardInterrupt:

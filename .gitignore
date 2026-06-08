@@ -1,2 +1,9 @@
 .venv/
 venv/
+
+# Experimental data
+baseline_delta_csv/
+data/
+facemesh_csv/
+normalized_facemesh_csv/
+video_data/

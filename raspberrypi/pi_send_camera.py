@@ -82,7 +82,7 @@ try:
         frame = picam2.capture_array()
 
         # OpenCV用にBGRへ変換
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        #frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         # JPEG圧縮（画質80）
         result, encoded = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])

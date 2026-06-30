@@ -5,6 +5,7 @@ import cv2
 import time
 import os
 import csv
+import math
 import mediapipe as mp
 
 from mediapipe.tasks import python
@@ -21,7 +22,6 @@ os.makedirs(CSV_DIR, exist_ok=True)
 
 TARGET_FPS = 15.0
 RECORD_SECONDS = 10.0
-COUNTDOWN_SECONDS = 3
 MODEL_PATH = "face_landmarker.task"
 
 # FaceLandmarkerで取得されるランドマーク数
@@ -56,14 +56,12 @@ data = b""
 payload_size = struct.calcsize("Q")
 
 recording = False
-countdown = False
 
 video_writer = None
 csv_file = None
 csv_writer = None
 
 record_start_time = None
-countdown_start_time = None
 
 video_count = 1
 frame_index = 0
@@ -337,50 +335,6 @@ try:
             )
 
         # =========================
-        # カウントダウン中
-        # =========================
-        if countdown and not recording:
-            elapsed_countdown = time.time() - countdown_start_time
-            remaining_countdown = COUNTDOWN_SECONDS - elapsed_countdown
-
-            if remaining_countdown > 0:
-                count_text = str(int(remaining_countdown) + 1)
-
-                cv2.putText(
-                    display_frame,
-                    count_text,
-                    (w // 2 - 40, h // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    3.0,
-                    (0, 0, 255),
-                    5
-                )
-
-                cv2.putText(
-                    display_frame,
-                    "Get ready to drink",
-                    (w // 2 - 220, h // 2 + 70),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 0, 255),
-                    2
-                )
-
-            else:
-                countdown = False
-                start_recording(frame)
-
-                cv2.putText(
-                    display_frame,
-                    "START!",
-                    (w // 2 - 120, h // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    2.0,
-                    (0, 0, 255),
-                    4
-                )
-
-        # =========================
         # 録画中
         # =========================
         if recording:
@@ -411,6 +365,19 @@ try:
 
             success_rate = rec_facemesh_ok_frames / rec_total_frames * 100
 
+            # 10秒カウントダウン表示
+            countdown_number = max(0, math.ceil(remaining_time))
+
+            cv2.putText(
+                display_frame,
+                str(countdown_number),
+                (w // 2 - 40, h // 2),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                3.0,
+                (0, 0, 255),
+                6
+            )
+
             cv2.putText(
                 display_frame,
                 f"REC remaining: {max(remaining_time, 0):.1f}s",
@@ -431,6 +398,28 @@ try:
                 2
             )
 
+            # 残り3秒になったら、カップから口を離す指示を表示
+            if remaining_time <= 3.0:
+                cv2.putText(
+                    display_frame,
+                    "Release cup from mouth",
+                    (w // 2 - 330, h // 2 + 80),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2,
+                    (0, 0, 255),
+                    3
+                )
+
+                cv2.putText(
+                    display_frame,
+                    "Cup off",
+                    (w // 2 - 100, h // 2 + 130),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0,
+                    (0, 0, 255),
+                    3
+                )
+
             if not facemesh_ok:
                 cv2.putText(
                     display_frame,
@@ -445,9 +434,23 @@ try:
             if elapsed_time >= RECORD_SECONDS:
                 stop_recording()
 
+        # =========================
+        # 録画していないときの案内
+        # =========================
+        if not recording:
+            cv2.putText(
+                display_frame,
+                "Press ENTER to start 10s recording",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 255, 255),
+                2
+            )
+
         cv2.putText(
             display_frame,
-            "SPACE: countdown & record / q: quit",
+            "ENTER: start recording / q: quit",
             (20, h - 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -462,11 +465,12 @@ try:
         if key == ord("q"):
             break
 
-        elif key == ord(" "):
-            if not recording and not countdown:
-                countdown = True
-                countdown_start_time = time.time()
-                print("カウントダウン開始")
+        # Enterキーで即録画開始
+        # 環境によってEnterが13または10になることがあるため両方対応
+        elif key == 13 or key == 10:
+            if not recording:
+                start_recording(frame)
+                print("Enterが押されたため録画開始")
 
 finally:
     if video_writer is not None:

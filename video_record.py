@@ -4,6 +4,7 @@ import pickle
 import cv2
 import time
 import os
+import csv
 import mediapipe as mp
 
 from mediapipe.tasks import python
@@ -13,12 +14,20 @@ HOST = "0.0.0.0"
 PORT = 9999
 
 SAVE_DIR = "video_data"
+CSV_DIR = "facemesh_csv"
+
 os.makedirs(SAVE_DIR, exist_ok=True)
+os.makedirs(CSV_DIR, exist_ok=True)
 
 TARGET_FPS = 15.0
 RECORD_SECONDS = 10.0
 COUNTDOWN_SECONDS = 3
 MODEL_PATH = "face_landmarker.task"
+
+# FaceLandmarkerで取得されるランドマーク数
+# 環境によって468や478の場合があります。
+# 基本は478で問題ないことが多いです。
+NUM_LANDMARKS = 478
 
 base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 
@@ -27,7 +36,10 @@ options = vision.FaceLandmarkerOptions(
     running_mode=vision.RunningMode.VIDEO,
     num_faces=1,
     output_face_blendshapes=False,
-    output_facial_transformation_matrixes=False
+    output_facial_transformation_matrixes=False,
+    min_face_detection_confidence=0.3,
+    min_face_presence_confidence=0.3,
+    min_tracking_confidence=0.3
 )
 
 landmarker = vision.FaceLandmarker.create_from_options(options)
@@ -47,61 +59,169 @@ recording = False
 countdown = False
 
 video_writer = None
+csv_file = None
+csv_writer = None
+
 record_start_time = None
 countdown_start_time = None
 
 video_count = 1
 frame_index = 0
+rec_frame_index = 0
 
 rec_total_frames = 0
 rec_facemesh_ok_frames = 0
+
+current_video_path = None
+current_csv_path = None
+
 
 while os.path.exists(os.path.join(SAVE_DIR, f"video_{video_count:03d}.mp4")):
     video_count += 1
 
 
-def get_next_filename():
+def get_next_paths():
     global video_count
 
     while os.path.exists(os.path.join(SAVE_DIR, f"video_{video_count:03d}.mp4")):
         video_count += 1
 
-    return os.path.join(SAVE_DIR, f"video_{video_count:03d}.mp4")
+    video_name = f"video_{video_count:03d}"
+    video_path = os.path.join(SAVE_DIR, video_name + ".mp4")
+    csv_path = os.path.join(CSV_DIR, video_name + "_facemesh.csv")
+
+    return video_path, csv_path
+
+
+def create_csv_header():
+    header = [
+        "video_name",
+        "rec_frame",
+        "global_frame",
+        "timestamp_ms",
+        "elapsed_sec",
+        "facemesh_ok"
+    ]
+
+    for i in range(NUM_LANDMARKS):
+        header += [
+            f"lm{i}_x_norm",
+            f"lm{i}_y_norm",
+            f"lm{i}_z_norm",
+            f"lm{i}_x_px",
+            f"lm{i}_y_px"
+        ]
+
+    return header
+
+
+def write_facemesh_csv_row(
+    landmarks,
+    video_name,
+    rec_frame,
+    global_frame,
+    timestamp_ms,
+    elapsed_sec,
+    frame_w,
+    frame_h
+):
+    """
+    録画中の1フレーム分のFaceMeshをCSVに保存する。
+    landmarks が None の場合は、FaceMesh検出失敗として空欄を保存する。
+    """
+
+    global csv_writer
+
+    facemesh_ok = landmarks is not None
+
+    row = [
+        video_name,
+        rec_frame,
+        global_frame,
+        timestamp_ms,
+        elapsed_sec,
+        int(facemesh_ok)
+    ]
+
+    for i in range(NUM_LANDMARKS):
+        if facemesh_ok and i < len(landmarks):
+            lm = landmarks[i]
+
+            x_norm = lm.x
+            y_norm = lm.y
+            z_norm = lm.z
+
+            x_px = int(lm.x * frame_w)
+            y_px = int(lm.y * frame_h)
+
+            row += [
+                x_norm,
+                y_norm,
+                z_norm,
+                x_px,
+                y_px
+            ]
+        else:
+            row += ["", "", "", "", ""]
+
+    csv_writer.writerow(row)
 
 
 def start_recording(frame):
     global recording
     global video_writer
+    global csv_file
+    global csv_writer
     global record_start_time
     global rec_total_frames
     global rec_facemesh_ok_frames
+    global rec_frame_index
+    global current_video_path
+    global current_csv_path
 
     h, w, _ = frame.shape
 
-    filename = get_next_filename()
+    current_video_path, current_csv_path = get_next_paths()
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
     video_writer = cv2.VideoWriter(
-        filename,
+        current_video_path,
         fourcc,
         TARGET_FPS,
         (w, h)
     )
+
+    csv_file = open(
+        current_csv_path,
+        "w",
+        newline="",
+        encoding="utf-8"
+    )
+
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(create_csv_header())
 
     recording = True
     record_start_time = time.time()
 
     rec_total_frames = 0
     rec_facemesh_ok_frames = 0
+    rec_frame_index = 0
 
-    print(f"録画開始: {filename}")
+    print(f"録画開始: {current_video_path}")
+    print(f"FaceMesh CSV保存開始: {current_csv_path}")
 
 
 def stop_recording():
     global recording
     global video_writer
+    global csv_file
+    global csv_writer
     global record_start_time
     global video_count
+    global current_video_path
+    global current_csv_path
 
     recording = False
     record_start_time = None
@@ -110,12 +230,18 @@ def stop_recording():
         video_writer.release()
         video_writer = None
 
+    if csv_file is not None:
+        csv_file.close()
+        csv_file = None
+        csv_writer = None
+
     if rec_total_frames > 0:
         success_rate = rec_facemesh_ok_frames / rec_total_frames * 100
     else:
         success_rate = 0
 
-    print(f"録画終了: video_{video_count:03d}.mp4")
+    print(f"録画終了: {os.path.basename(current_video_path)}")
+    print(f"FaceMesh CSV保存終了: {os.path.basename(current_csv_path)}")
     print(f"FaceMesh成功率: {success_rate:.1f}%")
 
     if success_rate >= 90:
@@ -130,6 +256,9 @@ def stop_recording():
 
 try:
     while True:
+        # =========================
+        # Raspberry Piからフレーム受信
+        # =========================
         while len(data) < payload_size:
             packet = conn.recv(4096)
             if not packet:
@@ -170,19 +299,22 @@ try:
             data=rgb_frame
         )
 
+        # VIDEOモードではtimestamp_msが単調増加している必要があります
         timestamp_ms = int(frame_index * (1000 / TARGET_FPS))
+
         result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
         facemesh_ok = False
+        landmarks_to_save = None
 
         if result.face_landmarks:
             facemesh_ok = True
+            landmarks_to_save = result.face_landmarks[0]
 
-            for face_landmarks in result.face_landmarks:
-                for lm in face_landmarks:
-                    x = int(lm.x * w)
-                    y = int(lm.y * h)
-                    cv2.circle(display_frame, (x, y), 1, (0, 255, 0), -1)
+            for lm in landmarks_to_save:
+                x = int(lm.x * w)
+                y = int(lm.y * h)
+                cv2.circle(display_frame, (x, y), 1, (0, 255, 0), -1)
 
             cv2.putText(
                 display_frame,
@@ -254,12 +386,28 @@ try:
         if recording:
             video_writer.write(frame)
 
+            rec_frame_index += 1
             rec_total_frames += 1
+
             if facemesh_ok:
                 rec_facemesh_ok_frames += 1
 
             elapsed_time = time.time() - record_start_time
             remaining_time = RECORD_SECONDS - elapsed_time
+
+            video_name = os.path.splitext(os.path.basename(current_video_path))[0]
+
+            # ここで、録画と同時にFaceMesh座標をCSVへ保存
+            write_facemesh_csv_row(
+                landmarks=landmarks_to_save,
+                video_name=video_name,
+                rec_frame=rec_frame_index,
+                global_frame=frame_index,
+                timestamp_ms=timestamp_ms,
+                elapsed_sec=elapsed_time,
+                frame_w=w,
+                frame_h=h
+            )
 
             success_rate = rec_facemesh_ok_frames / rec_total_frames * 100
 
@@ -323,6 +471,9 @@ try:
 finally:
     if video_writer is not None:
         video_writer.release()
+
+    if csv_file is not None:
+        csv_file.close()
 
     landmarker.close()
     conn.close()

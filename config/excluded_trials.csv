@@ -1,0 +1,2 @@
+trial_id,exclude,reason,notes
+P02_009,1,low_effective_fps,Approximately 10.8 FPS; substantially lower than the other trials.

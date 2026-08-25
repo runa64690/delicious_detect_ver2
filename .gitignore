@@ -1,10 +1,57 @@
+# Python virtual environments
 .venv/
 venv/
+env/
 
-# Experimental data
-baseline_delta_csv/
+# Python caches and tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE, editor, OS, and local Codex files
+.vscode/
+.idea/
+.agents/
+.codex/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Experimental data (may contain participant data)
 data/
 facemesh_csv/
-normalized_facemesh_csv/
 video_data/
+baseline_delta_csv/
+normalized_facemesh_csv/
 nose_origin_facemesh_csv/
+
+# Generated analysis outputs (features, exclusions, plots, metrics)
+results/
+
+# Future machine-learning artifacts
+checkpoints/
+runs/
+mlruns/

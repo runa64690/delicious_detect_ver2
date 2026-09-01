@@ -1,8 +1,8 @@
 # Delicious Detector Ver2
 
-Face Landmarkerで取得した顔ランドマークの時系列から、飲用時の顔動作を解析するプロジェクトです。現在は、水（`water = 0`）と炭酸水（`sparkling_water = 1`）の二値分類に向けたデータ収集、正規化、手作り特徴量生成までを実装しています。
+Face Landmarkerで取得した顔ランドマークの時系列から、飲用時の顔動作を解析するプロジェクトです。現在は、水（`water = 0`）と炭酸水（`sparkling_water = 1`）の二値分類に向けたデータ収集、正規化、手作り特徴量生成、LOSO（Leave-One-Subject-Out）評価までを実装しています。
 
-機械学習モデル、LOSO（Leave-One-Subject-Out）評価、1D-CNNは今後実装予定です。
+方法A（21個の手作り特徴量＋木モデル）は実行可能です。方法B（ランドマーク時系列＋1D-CNN）は今後実装予定です。
 
 ## 現在実装されている処理
 
@@ -16,6 +16,10 @@ Face Landmarkerで取得した顔ランドマークの時系列から、飲用�
 - 目、口、口角、眉に関する21個の手作り特徴量生成
 - 手動除外設定と実行時の自動除外記録
 - 特徴量のNaN、Inf、定数列、極端値のsanity check
+- Dummy、ExtraTrees、Random Forestによる二値分類
+- 被験者単位の6-fold LOSO評価とデータリーク検査
+- fold別・全体評価、予測、混同行列、特徴量重要度、実行条件の保存
+- 全検証済み試行による推論用Random Forestの最終学習・保存・再読込検証
 
 ## プライバシーとGit管理
 
@@ -36,7 +40,8 @@ Face Landmarkerで取得した顔ランドマークの時系列から、飲用�
 ```text
 Delicious_Detecter_Ver2/
 ├─ config/
-│  └─ excluded_trials.csv            # 手動除外するtrialと理由（Git管理対象）
+│  ├─ excluded_trials.csv            # 手動除外するtrialと理由（Git管理対象）
+│  └─ loso_experiment.json           # LOSOモデルと評価条件
 │
 ├─ data/                              # 実験データ（Git管理対象外）
 │  ├─ labels.csv                      # trial、participant、飲料ラベル等
@@ -50,12 +55,21 @@ Delicious_Detecter_Ver2/
 ├─ results/                           # 生成結果（Git管理対象外）
 │  ├─ features.csv                    # 1行＝1試行、21顔特徴＋メタデータ
 │  ├─ excluded_trials.csv             # 手動・自動除外の実行結果
-│  └─ debug_signals/                  # 任意のデバッグ時系列・グラフ
+│  ├─ debug_signals/                  # 任意のデバッグ時系列・グラフ
+│  ├─ ml/<run-name>/                  # LOSO予測・評価・混同行列等
+│  └─ models/<model-id>/              # 保存済み最終モデルと再現情報
 │
 ├─ scripts/
+│  ├─ feature_schema.py               # 分類に使う21特徴の共通定義
 │  ├─ validate_dataset.py             # labels/raw CSV検査
 │  ├─ normalize_facemesh.py           # 全フレーム正規化
-│  └─ extract_handcrafted_features.py # 21手作り特徴量生成
+│  ├─ extract_handcrafted_features.py # 21手作り特徴量生成
+│  ├─ train_loso_classifier.py        # 方法AのLOSO学習・評価
+│  └─ train_final_random_forest.py    # 推論用Random Forestの最終学習・保存
+│
+├─ tests/
+│  ├─ test_loso_classifier.py         # 分割・除外・再現性等のテスト
+│  └─ test_final_random_forest.py     # モデル保存・再読込のテスト
 │
 ├─ raspberrypi/
 │  ├─ pi_send_camera.py               # Raspberry Pi側の映像送信
@@ -65,6 +79,7 @@ Delicious_Detecter_Ver2/
 ├─ pc_receive_camera.py               # PC側の受信・FaceMesh表示
 ├─ video_record.py                    # 動画・FaceMesh CSV記録
 ├─ .gitignore
+├─ requirements.txt
 ├─ LICENSE
 └─ README.md
 ```
@@ -80,6 +95,9 @@ Delicious_Detecter_Ver2/
 | Python | 3.11.9 |
 | NumPy | 1.26.4 |
 | pandas | 3.0.2 |
+| scikit-learn | 1.9.0 |
+| joblib | 1.6.0 |
+| Matplotlib | 3.10.8 |
 | OpenCV | 4.11.0.86 |
 | MediaPipe | 0.10.33 |
 
@@ -91,7 +109,7 @@ Windows PowerShellでの例：
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install numpy pandas opencv-python mediapipe matplotlib
+python -m pip install -r requirements.txt
 ```
 
 Raspberry Pi側では、環境に応じて次のライブラリも必要です。
@@ -375,11 +393,75 @@ surprise
 easy_to_drink
 ```
 
-アンケート項目、被験者ID、飲料名、飲料ラベルは顔特徴量の計算には使用せず、メタデータとしてのみ付与します。今後分類コードを実装する際も、アンケート項目を分類入力へ混入させないでください。
+アンケート項目、被験者ID、飲料名、飲料ラベルは顔特徴量の計算には使用せず、メタデータとしてのみ付与します。分類コードは`feature_schema.py`で明示した21列だけを入力し、アンケート項目やIDが混入した場合でもモデル入力には使いません。
+
+## 5. 方法AのLOSO学習・評価
+
+標準設定は`config/loso_experiment.json`にあります。各foldで1被験者だけをtest、残りの被験者をtrainにし、全被験者が1回ずつtestになる6-fold LOSOです。ハイパーパラメータ探索はまだ行わず、固定条件のDummy、ExtraTrees、Random Forestを同じfoldで比較します。
+
+```powershell
+python scripts/train_loso_classifier.py --run-name initial_loso_v1
+```
+
+同名の結果を意図的に作り直す場合だけ`--overwrite`を付けます。
+
+```powershell
+python scripts/train_loso_classifier.py --run-name initial_loso_v1 --overwrite
+```
+
+主評価指標は6 foldのBalanced Accuracyの単純平均です。Accuracy、Precision、Recall、F1、Macro F1、ROC-AUCも保存します。主な出力は次のとおりです。
+
+| 出力 | 内容 |
+|---|---|
+| `predictions_<model>.csv` | 各試行の正解、予測、クラス確率 |
+| `fold_metrics_<model>.csv` | 被験者別の試行数と評価指標 |
+| `summary_metrics.csv` | 各指標のfold平均・標準偏差と全予測の集計値 |
+| `model_comparison.csv` | 3モデルの主要指標比較 |
+| `confusion_matrix_<model>.csv/.png` | 全test予測を集約した混同行列 |
+| `feature_importance_*.csv` | 木モデルのfold別・要約特徴量重要度 |
+| `fold_assignments.csv` | 各試行をtestにしたfold |
+| `dataset_audit.csv` | 被験者別の水・炭酸水試行数 |
+| `run_manifest.json` | バージョン、Git状態、入力hash、特徴列、除外、fold条件 |
+
+入力検査では、手動除外trialが`features.csv`へ残っていないこと、特徴量が有限値であること、各被験者に両クラスがあることを確認します。同一被験者がtrainとtestへ入った場合はエラーにします。
+
+テストは次のコマンドで実行できます。
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+## 6. 推論用Random Forestの最終学習・保存
+
+LOSOで採用候補をRandom Forestに決めた後、検証済みの全59試行で推論用モデルを学習します。
+
+```powershell
+python scripts/train_final_random_forest.py --model-id random_forest_v1
+```
+
+同じIDのモデルを意図的に再学習する場合だけ`--overwrite`を付けます。
+
+```powershell
+python scripts/train_final_random_forest.py `
+  --model-id random_forest_v1 `
+  --overwrite
+```
+
+出力先は`results/models/random_forest_v1/`です。
+
+| 出力 | 内容 |
+|---|---|
+| `model.joblib` | 59試行すべてで学習したRandom Forest本体 |
+| `metadata.json` | クラス対応、21特徴の順序、パラメータ、バージョン、モデルhash |
+| `training_summary.json` | 学習試行数、被験者・ラベル内訳、除外、入力ファイルhash、再読込検証結果 |
+
+保存直後にモデルを再読込し、保存前後で予測ラベルが一致すること、確率が浮動小数点許容差内で一致すること、特徴量名・順序とクラスが一致することを検査します。
+
+このモデルは将来の新規試行を推論するためのものです。全59試行を学習に使うため、このモデル自身を同じ59試行で評価した値は汎化性能になりません。性能の報告には前節のLOSO結果を使用します。`results/`はGit管理対象外であり、学習済みモデルもGitHubには掲載されません。
 
 ## 現在のローカルデータで確認済みの結果
 
-2026年8月25日時点のローカルデータでは、以下を確認しています。実験データ自体はGitHubに含まれないため、clone先のデータによって結果は変わります。
+2026年8月31日時点のローカルデータでは、以下を確認しています。実験データ自体はGitHubに含まれないため、clone先のデータによって結果は変わります。
 
 ```text
 labels trials     : 60
@@ -396,14 +478,26 @@ feature NaN/Inf   : 0
 
 `P01_010`はFaceMesh未検出1フレームをスキップし、200 rawフレームから199 normalizedフレームを生成しています。
 
+固定条件での初回LOSO結果は次のとおりです。主指標はfold平均Balanced Accuracyです。
+
+| モデル | fold平均 Balanced Accuracy | fold標準偏差 | fold平均 Accuracy | fold平均 F1 | fold平均 ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| Random Forest | 0.5583 | 0.1429 | 0.5611 | 0.5475 | 0.6267 |
+| ExtraTrees | 0.5250 | 0.1666 | 0.5278 | 0.5415 | 0.6117 |
+| Dummy | 0.5000 | 0.0000 | 0.4907 | 0.5556 | 0.5000 |
+
+Random Forestがこの条件では最上位ですが、59試行・6被験者と小規模で、被験者別Balanced Accuracyは0.40～0.80とばらついています。現段階では性能確立ではなく、評価パイプラインの初期動作確認として扱います。モデル選択や特徴選択を行う場合は、test被験者の情報を使わないnested LOSO等が必要です。
+
+推論用`random_forest_v1`は同じ59試行すべてで最終学習済みです。1000本の決定木、21特徴、`random_state = 42`を使用し、保存後の再読込検証にも成功しています。
+
 ## 今後の予定
 
-- ExtraTrees／Random Forestによる二値分類
-- 被験者単位のLOSO評価
-- Accuracy、Precision、Recall、F1、ROC-AUC、Confusion Matrixの保存
 - 方法B用80ランドマーク時系列の生成
 - 1D-CNN
 - 方法Aと方法Bで共通の試行・除外設定・LOSO foldを使用
+- 保存済みRandom Forestによる1試行オフライン推論
+- Raspberry Pi映像の10秒計測終了時に行うリアルタイム推論
+- ハイパーパラメータ・特徴選択を行う場合のnested LOSO
 - 実効FPS差とmotion特徴の時間基準化の検討
 
 ## GitHubへpushする前の確認
@@ -417,7 +511,7 @@ git diff --check
 追加対象の例：
 
 ```powershell
-git add .gitignore README.md config scripts
+git add .gitignore README.md requirements.txt config scripts tests
 ```
 
 `git status`で、動画、顔座標、アンケート、`results/features.csv`が追加対象に含まれていないことを必ず確認してください。

@@ -17,6 +17,21 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+try:
+    from .feature_schema import (
+        FACIAL_FEATURE_COLUMNS,
+        FEATURE_OUTPUT_COLUMNS,
+        METADATA_COLUMNS,
+        QUESTIONNAIRE_COLUMNS,
+    )
+except ImportError:  # Direct execution: python scripts/extract_handcrafted_features.py
+    from feature_schema import (
+        FACIAL_FEATURE_COLUMNS,
+        FEATURE_OUTPUT_COLUMNS,
+        METADATA_COLUMNS,
+        QUESTIONNAIRE_COLUMNS,
+    )
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -52,48 +67,9 @@ REQUIRED_LANDMARKS = tuple(
     )
 )
 
-FEATURE_COLUMNS = [
-    "eye_open_mean",
-    "eye_open_std",
-    "eye_open_min",
-    "eye_open_range",
-    "eye_motion_mean",
-    "blink_count",
-    "blink_closed_ratio",
-    "mouth_open_mean",
-    "mouth_open_std",
-    "mouth_open_max",
-    "mouth_open_range",
-    "mouth_open_motion",
-    "mouth_corner_mean",
-    "mouth_corner_std",
-    "mouth_corner_range",
-    "mouth_corner_motion",
-    "mouth_corner_asymmetry_mean",
-    "brow_eye_mean",
-    "brow_eye_std",
-    "brow_eye_range",
-    "brow_eye_motion",
-]
-
-QUESTIONNAIRE_COLUMNS = [
-    "delicious",
-    "like",
-    "sweet",
-    "bitter",
-    "stimulus",
-    "surprise",
-    "easy_to_drink",
-]
-
-METADATA_COLUMNS = [
-    "trial_id",
-    "participant_id",
-    "drink_name",
-    "drink_label",
-]
-
-OUTPUT_COLUMNS = METADATA_COLUMNS + FEATURE_COLUMNS + QUESTIONNAIRE_COLUMNS
+# Backward-compatible aliases used throughout this script.
+FEATURE_COLUMNS = FACIAL_FEATURE_COLUMNS
+OUTPUT_COLUMNS = FEATURE_OUTPUT_COLUMNS
 EXCLUDED_COLUMNS = [
     "trial_id",
     "participant_id",

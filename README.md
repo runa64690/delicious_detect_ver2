@@ -20,6 +20,7 @@ Face Landmarkerで取得した顔ランドマークの時系列から、飲用�
 - 被験者単位の6-fold LOSO評価とデータリーク検査
 - fold別・全体評価、予測、混同行列、特徴量重要度、実行条件の保存
 - 全検証済み試行による推論用Random Forestの最終学習・保存・再読込検証
+- Enter開始の10秒収集とRandom Forestによるリアルタイム判定
 
 ## プライバシーとGit管理
 
@@ -65,11 +66,14 @@ Delicious_Detecter_Ver2/
 │  ├─ normalize_facemesh.py           # 全フレーム正規化
 │  ├─ extract_handcrafted_features.py # 21手作り特徴量生成
 │  ├─ train_loso_classifier.py        # 方法AのLOSO学習・評価
-│  └─ train_final_random_forest.py    # 推論用Random Forestの最終学習・保存
+│  ├─ train_final_random_forest.py    # 推論用Random Forestの最終学習・保存
+│  ├─ realtime_predictors.py          # 交換可能なリアルタイムモデル層
+│  └─ realtime_pipeline.py            # 1試行の品質検査・正規化・推論・ログ
 │
 ├─ tests/
 │  ├─ test_loso_classifier.py         # 分割・除外・再現性等のテスト
-│  └─ test_final_random_forest.py     # モデル保存・再読込のテスト
+│  ├─ test_final_random_forest.py     # モデル保存・再読込のテスト
+│  └─ test_realtime_inference.py      # 推論・品質条件・ログのテスト
 │
 ├─ raspberrypi/
 │  ├─ pi_send_camera.py               # Raspberry Pi側の映像送信
@@ -77,6 +81,7 @@ Delicious_Detecter_Ver2/
 │
 ├─ face_landmarker.task               # MediaPipe Face Landmarkerモデル
 ├─ pc_receive_camera.py               # PC側の受信・FaceMesh表示
+├─ realtime_classify.py               # Enter開始の水・炭酸水リアルタイム判定
 ├─ video_record.py                    # 動画・FaceMesh CSV記録
 ├─ .gitignore
 ├─ requirements.txt
@@ -459,6 +464,92 @@ python scripts/train_final_random_forest.py `
 
 このモデルは将来の新規試行を推論するためのものです。全59試行を学習に使うため、このモデル自身を同じ59試行で評価した値は汎化性能になりません。性能の報告には前節のLOSO結果を使用します。`results/`はGit管理対象外であり、学習済みモデルもGitHubには掲載されません。
 
+## 7. Raspberry Piカメラのリアルタイム判定
+
+`realtime_classify.py`は通常時にはラズパイ映像をストリーミング表示し、Enterキーを押した後の10秒間だけFaceMesh座標をメモリへ収集します。収集終了後に、学習時と同じ正規化、21特徴量生成、保存済みRandom Forestによる推論を行います。推論処理は別スレッドで行うため、処理中も映像受信・表示を継続します。
+
+PC側を先に起動します。通常は映像接続元のRaspberry Pi IPをIR・LED制御にも自動使用するため、`--raspi-ip`の指定は不要です。
+
+```powershell
+python realtime_classify.py `
+  --show-facemesh
+```
+
+映像接続元とIR・LED制御先が異なる特殊な構成の場合だけ、`--raspi-ip`を明示します。
+
+```powershell
+python realtime_classify.py `
+  --raspi-ip 192.168.0.139 `
+  --show-facemesh
+```
+
+`pc_receive_camera.py`や`video_record.py`も同じ映像ポート`9999`を使うため、同時には起動せず、リアルタイム判定時は`realtime_classify.py`だけを起動してください。また、事前に`results/models/random_forest_v1/model.joblib`が作成済みである必要があります。
+
+続いてRaspberry Pi側で`raspberrypi/pi_send_camera.py`を実行します。同ファイルの`LAPTOP_IP`にはPCのIPアドレスを設定してください。
+
+操作キーは次のとおりです。
+
+| キー | 動作 |
+|---|---|
+| Enter | 10秒間の1試行収集を開始 |
+| `F` | FaceMesh点表示のON/OFF |
+| Space | 赤外線照明のON/OFF |
+| `Q` | 終了 |
+
+### フルカラーLEDリング
+
+Raspberry Pi側の`pi_send_camera.py`は、`test_leds.py`と同じNeoPixel設定でLEDリングを制御します。
+
+```text
+データ端子 : GPIO18 (board.D18)
+LED数      : 12
+色順       : GRB
+明るさ     : 15%
+```
+
+| 状態 | LED表示 |
+|---|---|
+| FaceMeshが顔を認識 | 全体を緑 |
+| 顔を未認識 | 消灯 |
+| 正規化・特徴量計算・推論中 | リング全体を回る虹色 |
+| 水と判定 | 3秒間青、その後は顔認識状態へ戻る |
+| 炭酸水と判定 | 3秒間赤、その後は顔認識状態へ戻る |
+| 品質不足・計算エラー | 顔認識状態へ戻る |
+
+LED状態はPCから制御ポート`10000`へ送ります。制御接続が一時的に切れても映像送信は継続し、Pi側は次のPC接続を再度待ち受けます。PC側もLED命令の送信失敗だけで映像処理を停止しません。
+
+Raspberry Piには`board`と`neopixel`が必要です。環境によってはGPIO18のNeoPixel制御にroot権限が必要です。
+
+```bash
+sudo python raspberrypi/pi_send_camera.py
+```
+
+LEDリングには適切な5V電源を使用し、Raspberry PiとGNDを共通にしてください。LEDリング全体をGPIOピンから給電しないでください。
+
+学習時の撮影手順へ合わせ、終了3秒前から`Release cup from mouth`を表示します。標準の品質条件は、FaceMesh有効180フレーム以上かつ成功率70%以上です。満たさない場合は水・炭酸水を無理に出さず、`NO RESULT`として記録します。
+
+```text
+収集前       : 映像・FaceMeshを常時表示
+Enter        : 10秒収集開始
+収集中       : 残り時間、有効FaceMesh数を表示
+収集終了     : 正規化・特徴量計算・推論
+判定成功     : WATERまたはSPARKLING_WATERと両クラスのscoreを表示
+品質不足     : NO RESULTを表示
+```
+
+結果は`results/realtime_predictions.jsonl`へ1試行1行で保存します。成功試行には予測、両クラスのscore、21特徴量、フレーム数、FaceMesh成功率、実効FPS、処理時間が含まれます。失敗試行にも除外理由とフレーム数を保存します。モデル出力scoreは、現時点では校正済みの正答確率ではありません。
+
+収集したraw・normalized座標CSVも残す場合は、次のように指定します。
+
+```powershell
+python realtime_classify.py `
+  --save-trials-dir results/realtime_trials
+```
+
+`realtime_predictors.py`の`TrialPredictor`は、正規化済み478点の1試行を受け取る共通インターフェースです。現在の`HandcraftedRandomForestPredictor`はそこから21特徴量を生成します。将来、座標時系列モデルを追加するときは、新しいpredictorが同じ正規化済み試行を受け取って`180×80×2`等へ整形するように実装します。カメラ受信、収集キー、品質検査、ログ処理は変更せず、`load_predictor()`へ新しいモデル種別を追加して切り替えられます。
+
+現在のラズパイ送信コードとの互換性のため、映像受信にはPython pickleを使用しています。信頼できる実験用LAN内だけで使用し、外部ネットワークへ公開しないでください。将来の運用版では長さ付きJPEGバイト列へ置き換える予定です。
+
 ## 現在のローカルデータで確認済みの結果
 
 2026年8月31日時点のローカルデータでは、以下を確認しています。実験データ自体はGitHubに含まれないため、clone先のデータによって結果は変わります。
@@ -496,7 +587,7 @@ Random Forestがこの条件では最上位ですが、59試行・6被験者と�
 - 1D-CNN
 - 方法Aと方法Bで共通の試行・除外設定・LOSO foldを使用
 - 保存済みRandom Forestによる1試行オフライン推論
-- Raspberry Pi映像の10秒計測終了時に行うリアルタイム推論
+- Raspberry Pi実機でのリアルタイム処理速度・通信安定性の検証
 - ハイパーパラメータ・特徴選択を行う場合のnested LOSO
 - 実効FPS差とmotion特徴の時間基準化の検討
 

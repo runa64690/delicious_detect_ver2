@@ -12,7 +12,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 HOST = "0.0.0.0"
-PORT = 9999
+PORT = 50000
 
 SAVE_DIR = "video_data"
 CSV_DIR = "facemesh_csv"

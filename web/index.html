@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#122921">
+  <title>Delicious Detector</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header><div class="brand"><span class="mark">D</span><div>Delicious Detector<small>飲料判定コントローラー</small></div></div><span id="connection" class="badge">接続中…</span></header>
+  <main>
+    <div class="intro"><p class="eyebrow">LIVE SESSION</p><h1>ひとくちを、記録する。</h1><p>映像を確認して、飲料の判定を始めましょう。</p></div>
+    <div id="error" role="alert" hidden></div>
+    <div class="workspace">
+      <section class="camera card" aria-label="ライブ映像">
+        <div class="section-heading"><h2>ライブ映像</h2><label class="switch"><input id="mesh" type="checkbox"> FaceMesh</label></div>
+        <div class="viewport"><img id="live" alt="Raspberry Piからのライブ映像"><div id="waiting">カメラの接続を待っています</div><span id="recordBadge" hidden>● 録画中</span></div>
+        <div class="camera-meta"><span id="face">顔検出 —</span><span>Raspberry Pi → PC</span></div>
+        <div class="session-status" aria-live="polite"><strong id="phase">準備中</strong><span id="progress">PCとの接続を確認しています</span></div>
+        <p id="cup" hidden>コップを口から離してください</p>
+        <div class="actions"><button id="trial" class="primary" disabled>判定を開始</button><button id="record" disabled>任意録画を開始</button></div>
+        <p class="hint">判定区間は自動保存されます。任意録画は停止するまで続きます。</p>
+      </section>
+      <aside>
+        <section class="card"><p class="eyebrow">LATEST RESULT</p><h2>判定結果</h2><div id="result" aria-live="polite"><p class="muted">まだ判定結果はありません。</p></div></section>
+        <section class="card"><div class="section-heading"><h2>照明・LED</h2><span id="controlStatus" class="badge">未接続</span></div>
+          <label for="ledMode">LEDモード</label><select id="ledMode"><option value="auto">自動：判定状態に連動</option><option value="manual">手動：指定した色を維持</option></select>
+          <div class="color-row"><label for="color">点灯色</label><input id="color" type="color" value="#287fff"></div>
+          <label for="brightness">明るさ <output id="brightnessValue">15%</output></label><input id="brightness" type="range" min="0" max="15" step="1" value="15">
+          <div class="actions"><button id="applyLed">LEDに適用</button><button id="ledOff">消灯</button></div>
+          <label class="ir"><span>赤外線照明</span><input id="ir" type="checkbox"></label><p id="controlError" class="hint"></p>
+        </section>
+      </aside>
+    </div>
+    <section class="card history"><div class="section-heading"><div><p class="eyebrow">SESSION ARCHIVE</p><h2>判定・録画の履歴</h2></div><div class="downloads"><a href="/api/logs/csv" download>CSV ↓</a><a href="/api/logs/jsonl" download>JSONL ↓</a></div></div>
+      <div id="history"><p class="muted">履歴を読み込んでいます…</p></div><button id="more" hidden>さらに表示</button>
+    </section>
+    <dialog id="playerDialog"><div class="section-heading"><h2>保存動画</h2><button id="closePlayer">閉じる</button></div><video id="player" controls playsinline preload="metadata"></video><p class="hint">PCに保存された動画を再生しています。</p></dialog>
+    <footer>映像・ログはPCに保存されます。スコアはモデル出力であり、正答率ではありません。</footer>
+  </main>
+</body>
+</html>

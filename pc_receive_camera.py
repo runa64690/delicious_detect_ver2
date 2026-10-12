@@ -10,7 +10,6 @@ from mediapipe.tasks.python import vision
 HOST = "0.0.0.0"
 PORT = 9999
 
-RASPI_IP = "192.168.0.173"
 CONTROL_PORT = 10000
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -22,7 +21,7 @@ conn, addr = server_socket.accept()
 print("接続:", addr)
 
 control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-control_socket.connect((RASPI_IP, CONTROL_PORT))
+control_socket.connect((addr[0], CONTROL_PORT))
 
 data = b""
 payload_size = struct.calcsize("Q")
@@ -85,7 +84,7 @@ try:
         if show_facemesh:
 
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
+
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
             timestamp_ms = int(time.perf_counter() * 1000)
 
@@ -100,7 +99,7 @@ try:
                         y = int(lm.y * h)
                         cv2.circle(display_frame, (x, y), 1, (0, 255, 0), -1)
 
-        cv2.imshow("Raspberry Pi Camera", display_frame) 
+        cv2.imshow("Raspberry Pi Camera", display_frame)
 
         key = cv2.waitKey(1) & 0xFF
 

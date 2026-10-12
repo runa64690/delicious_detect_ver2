@@ -55,3 +55,51 @@ results/
 checkpoints/
 runs/
 mlruns/
+
+# Local participant exclusions (publish the empty example only)
+/config/excluded_trials.csv
+
+# Downloaded / trained model artifacts
+*.task
+*.joblib
+*.pkl
+*.pickle
+*.onnx
+*.tflite
+*.pt
+*.pth
+*.h5
+*.keras
+
+# Recordings and tabular experiment exports outside their default folders
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.h264
+*.csv
+*.jsonl
+*.npy
+*.npz
+!config/*.example.csv
+
+# Machine-local settings and credentials
+.aws/
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Only explicitly selected documentation images belong in Git
+*.jpg
+*.jpeg
+*.png
+*.webp
+!docs/images/*.jpg
+!docs/images/*.jpeg
+!docs/images/*.png
+!docs/images/*.webp

@@ -5,3 +5,6 @@ joblib==1.6.0
 matplotlib==3.10.8
 opencv-python==4.11.0.86
 mediapipe==0.10.33
+fastapi==0.142.2
+uvicorn==0.54.0
+imageio-ffmpeg==0.6.0

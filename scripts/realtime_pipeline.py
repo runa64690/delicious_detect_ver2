@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -104,11 +106,22 @@ def prepare_normalized_trial(
     return normalized, quality
 
 
+_log_lock = threading.Lock()
+
+
 def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-        handle.write("\n")
+    with _log_lock, path.open("a+", encoding="utf-8") as handle:
+        # Separate a truncated last record after an unclean shutdown.
+        handle.seek(0, 2)
+        if handle.tell():
+            with path.open("rb") as existing:
+                existing.seek(-1, 2)
+                if existing.read(1) != b"\n":
+                    handle.write("\n")
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def process_trial(
@@ -120,14 +133,14 @@ def process_trial(
     minimum_success_rate: float,
     log_path: Path,
     save_trials_dir: Path | None = None,
+    video_id: str | None = None,
 ) -> ProcessedTrial:
     started = time.perf_counter()
-    if save_trials_dir is not None:
-        raw_dir = save_trials_dir / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        raw_trial.to_csv(raw_dir / f"{trial_id}.csv", index=False, encoding="utf-8-sig")
-
     try:
+        if save_trials_dir is not None:
+            raw_dir = save_trials_dir / "raw"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            raw_trial.to_csv(raw_dir / f"{trial_id}.csv", index=False, encoding="utf-8-sig")
         normalized, quality = prepare_normalized_trial(
             raw_trial,
             trial_id=trial_id,
@@ -159,6 +172,7 @@ def process_trial(
                 "recorded_at": datetime.now().astimezone().isoformat(),
                 "status": "success",
                 "trial_id": trial_id,
+                "video_id": video_id,
                 "prediction": asdict(prediction),
                 "quality": asdict(quality),
                 "normalized_frames": len(normalized),
@@ -176,6 +190,7 @@ def process_trial(
                 "recorded_at": datetime.now().astimezone().isoformat(),
                 "status": "rejected",
                 "trial_id": trial_id,
+                "video_id": video_id,
                 "model_id": predictor.model_id,
                 "error_type": type(exc).__name__,
                 "error_message": str(exc),

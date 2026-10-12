@@ -6,11 +6,9 @@ Raspberry Piのカメラで飲用中の表情を撮影し、PCで顔の動きを
 
 「おいしさ」を顔の動きから捉えることを目指し、現在は飲料の違いを分類する段階に取り組んでいます。主観的なおいしさを直接推定するモデルは未実装です。
 
-<!-- PHOTO: hero。docs/images/hero.jpg を配置したら、次の画像行だけをコメントの外へ出してください。
-![Delicious Detectorの装置全体。カメラ、LEDリング、操作端末](docs/images/hero.jpg)
--->
+![Delicious Detectorのグラス型装置と使用中の様子](docs/images/hero.jpg)
 
-[デモの詳細](docs/demo.md) · [学習・評価](docs/research.md) · [写真の追加方法](docs/images/README.md) · [公開前の確認](docs/publishing.md)
+[デモの詳細](docs/demo.md) · [学習・評価](docs/research.md) · [公開前の確認](docs/publishing.md)
 
 ## できること
 
@@ -27,13 +25,9 @@ Raspberry Piのカメラで飲用中の表情を撮影し、PCで顔の動きを
 3. 終了3秒前の案内に合わせて、コップを口から離します。
 4. ブラウザとLEDリングで判定結果を確認します。
 
-<!-- PHOTO: demo。docs/images/demo.jpg を配置したら、次の画像行だけをコメントの外へ出してください。
-![飲料を飲みながらカメラで顔の動きを取得している様子](docs/images/demo.jpg)
--->
+![飲用中の顔にランドマークを重ねたカメラ映像](docs/images/demo.jpg)
 
-<!-- PHOTO: web-ui。docs/images/web-ui.png を配置したら、次の画像行だけをコメントの外へ出してください。
-![ブラウザのライブ映像と水・炭酸水の判定結果](docs/images/web-ui.png)
--->
+![ブラウザのライブ映像と水・炭酸水の判定結果](docs/images/web_ui.jpg)
 
 ## 仕組み
 
@@ -183,18 +177,6 @@ PCウィンドウで操作する場合はWeb版の代わりに`python realtime_c
 ```
 
 実機での映像・LED・IR・通信の確認項目は[デモの詳細](docs/demo.md)に記載しています。
-
-## 写真を追加する
-
-`docs/images/`に次の3枚を置き、このREADMEの対応する`PHOTO`コメントから画像行を外すと表示されます。写真が未配置の間はリンク切れの画像を表示しません。
-
-| ファイル名 | 用意する写真 |
-|---|---|
-| `hero.jpg` | 装置全体。カメラ・LEDリング・操作端末が一緒に見える横長写真 |
-| `demo.jpg` | 飲用中の様子。人と装置の位置関係が分かる写真 |
-| `web-ui.png` | ライブ映像・判定結果が分かるブラウザ画面のスクリーンショット |
-
-撮り方・サイズ・任意の追加写真は[写真の追加ガイド](docs/images/README.md)を参照してください。
 
 ## ライセンス
 
